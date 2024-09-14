@@ -15,7 +15,7 @@ const App = {
             }
 
             // Load contract data
-            const response = await fetch('Fundraiser.json');
+            const response = await fetch('FloodFund.json');
             const contractJson = await response.json();
             App.contract = TruffleContract(contractJson);
             App.contract.setProvider(App.web3.currentProvider);
