@@ -50,13 +50,21 @@ module.exports = {
   networks: {
     development: {
       host: "127.0.0.1",
-      port: 7545,
-      network_id: "*"
+      port: 7545,  // Make sure this matches your Ganache port
+      network_id: "*",
+      gas: 6721975,
+      gasPrice: 20000000000  // 20 gwei
     }
   },
   compilers: {
     solc: {
-      version: "0.8.13"
+      version: "0.8.13",  // Use a more recent version
+      settings: {
+        optimizer: {
+          enabled: true,
+          runs: 200
+        }
+      }
     }
   }
 };
@@ -68,11 +76,11 @@ module.exports = {
 //     // tab if you use this network and you must also set the `host`, `port` and `network_id`
 //     // options below to some value.
 //     //
-//     // development: {
-//     //  host: "127.0.0.1",     // Localhost (default: none)
-//     //  port: 8545,            // Standard Ethereum port (default: none)
-//     //  network_id: "*",       // Any network (default: none)
-//     // },
+//     development: {
+//      host: "127.0.0.1",     // Localhost (default: none)
+//      port: 7545,            // Standard Ethereum port (default: none)
+//      network_id: "*",       // Any network (default: none)
+//     },
 //     //
 //     // An additional network, but with some advanced options…
 //     // advanced: {
