@@ -1,113 +1,142 @@
-const App = {
-    web3: null,
-    contract: null,
-    account: null,
+App = {
+    web3Provider: null,
+    contracts: {},
 
     init: async function() {
-        try {
-            // Check if MetaMask is installed
-            if (typeof window.ethereum !== 'undefined') {
-                // Request account access
-                await window.ethereum.request({ method: 'eth_requestAccounts' });
-                App.web3 = new Web3(window.ethereum);
-            } else {
-                throw "Please install MetaMask!";
+        return App.initWeb3();
+    },
+
+    initWeb3: async function() {
+
+        if (window.ethereum) {
+            App.web3Provider = window.ethereum;
+            try {
+
+                await window.ethereum.request({ method: "eth_requestAccounts" });
+            } catch (error) {
+                console.error("User denied account access...");
+            }
+        }
+
+        else if (window.web3) {
+            App.web3Provider = window.web3.currentProvider;
+        }
+
+        else {
+            App.web3Provider = new Web3.providers.HttpProvider("http://localhost:8545");
+        }
+
+        window.web3 = new Web3(App.web3Provider);
+
+        return App.initContract();
+    },
+
+    initContract: function() {
+
+        $.getJSON('FloodFund.json', function(data) {
+            App.contracts.FloodFund = TruffleContract(data);
+            App.contracts.FloodFund.setProvider(App.web3Provider);
+
+            return App.render();
+        });
+    },
+
+    render: function() {
+        var metamaskStatus = $('#metamask-status');
+        web3.eth.getAccounts(function(error, accounts) {
+            if (error) {
+                console.log(error);
             }
 
-            // Load contract data
-            const response = await fetch('FloodFund.json');
-            const contractJson = await response.json();
-            App.contract = TruffleContract(contractJson);
-            App.contract.setProvider(App.web3.currentProvider);
-
-            // Get user account
-            const accounts = await App.web3.eth.getAccounts();
-            App.account = accounts[0];
-
-            // Update UI
-            document.getElementById('metamask-status').textContent = `Connected with: ${App.account}`;
-
-            // Set up event listeners
-            App.bindEvents();
-
-        } catch (error) {
-            console.error("Could not connect to contract or blockchain:", error);
-        }
+            if (accounts.length === 0) {
+                metamaskStatus.text('Please connect to Metamask');
+            } else {
+                metamaskStatus.text('Connected: ' + accounts[0]);
+            }
+        });
     },
 
-    bindEvents: function() {
-        document.getElementById('registration-form').addEventListener('submit', App.registerDonor);
-        document.getElementById('donation-form').addEventListener('submit', App.donate);
-        document.getElementById('get-donation-info').addEventListener('click', App.getDonationInfo);
-        document.getElementById('get-donor-info').addEventListener('click', App.getDonorInfo);
-    },
-
-    registerDonor: async function(event) {
+    registerDonor: function(event) {
         event.preventDefault();
-        const name = document.getElementById('name').value;
-        const mobile = document.getElementById('mobile').value;
 
-        try {
-            const instance = await App.contract.deployed();
-            await instance.registerDonor(name, mobile, { from: App.account });
-            alert('Registration successful!');
-        } catch (error) {
-            console.error("Error registering donor:", error);
-            alert('Registration failed. See console for details.');
-        }
+        const donorName = $('#name').val();
+        const donorMobile = $('#mobile').val();
+
+        web3.eth.getAccounts(function(error, accounts) {
+            if (error) {
+                console.log(error);
+            }
+
+            const account = accounts[0];
+
+            App.contracts.FloodFund.deployed().then(function(instance) {
+                return instance.registerDonor(donorName, donorMobile, { from: account });
+            }).then(function(result) {
+                console.log("Donor registered", result);
+            }).catch(function(err) {
+                console.error(err);
+            });
+        });
     },
 
     donate: async function(event) {
         event.preventDefault();
-        const mobile = document.getElementById('donor-mobile').value;
-        const region = parseInt(document.getElementById('region').value);
-        const amount = document.getElementById('amount').value;
+        const contractInstance = await App.contracts.FloodFund.deployed()
+        const donorMobile = $('#donor-mobile').val();
+        const region = $('#region').val();
+        const amount = $('#amount').val();
+        
 
-        try {
-            const instance = await App.contract.deployed();
-            await instance.donate(region, mobile, { from: App.account, value: amount });
-            alert('Donation successful!');
-        } catch (error) {
-            console.error("Error donating:", error);
-            alert('Donation failed. See console for details.');
-        }
+        web3.eth.getAccounts(function(error, accounts) {
+            if (error) {
+                console.log(error);
+            }
+            
+            const weiAmount = web3.toWei(amount, 'ether');
+            const account = accounts[0];
+            const result = contractInstance.donate( region, donorMobile, { from: account, value: weiAmount } )
+
+        });
+
+        
+
     },
 
-    getDonationInfo: async function() {
-        try {
-            const instance = await App.contract.deployed();
-            const total = await instance.getTotalDonation();
-            const sylhet = await instance.getDonationAmount(0);
-            const chittagongSouth = await instance.getDonationAmount(1);
-            const chittagongNorth = await instance.getDonationAmount(2);
-
-            const info = `
-                Total Donations: ${App.web3.utils.fromWei(total, 'ether')} ETH
-                Sylhet: ${App.web3.utils.fromWei(sylhet, 'ether')} ETH
-                Chittagong South: ${App.web3.utils.fromWei(chittagongSouth, 'ether')} ETH
-                Chittagong North: ${App.web3.utils.fromWei(chittagongNorth, 'ether')} ETH
-            `;
-            document.getElementById('donation-info').textContent = info;
-        } catch (error) {
-            console.error("Error getting donation info:", error);
-            alert('Failed to get donation info. See console for details.');
-        }
+    getDonationInfo: function() {
+        App.contracts.FloodFund.deployed().then(function(instance) {
+            return instance.getBalance();
+        }).then(function(result) {
+            const sylhet = result[0];
+            const ctgNorth = result[1];
+            const ctgSouth = result[2];
+            const total = result[3];
+    
+            $('#donation-info').text(`Sylhet: ${sylhet}, Chittagong North: ${ctgNorth}, Chittagong South: ${ctgSouth}, Total donations: ${total}`);
+        }).catch(function(err) {
+            console.error(err);
+        });
     },
 
-    getDonorInfo: async function() {
-        const donorAddress = document.getElementById('donor-address').value;
+    getDonorInfo: function() {
+        const donorAddress = $('#donor-address').val();
 
-        try {
-            const instance = await App.contract.deployed();
-            const [name, mobile] = await instance.getDonorInfo(donorAddress);
-            document.getElementById('donor-info').textContent = `Name: ${name}, Mobile: ${mobile}`;
-        } catch (error) {
-            console.error("Error getting donor info:", error);
-            alert('Failed to get donor info. See console for details.');
-        }
+        App.contracts.FloodFund.deployed().then(function(instance) {
+            return instance.getDonorInfoByAddress(donorAddress);
+        }).then(function(result) {
+            $('#donor-info').text(`Name: ${result[0]}, Mobile: ${result[1]}`);
+        }).catch(function(err) {
+            console.error(err);
+        });
     }
 };
 
-window.addEventListener('load', function() {
-    App.init();
+$(function() {
+    $(window).on('load', function() {
+        App.init();
+
+        $('#registration-form').submit(App.registerDonor);
+        $('#donation-form').submit(App.donate);
+        $('#get-donation-info').click(App.getDonationInfo);
+        $('#get-donor-info').click(App.getDonorInfo);
+    });
 });
